@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: manager-kpi2026
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: node server/server.js
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromSecret: DATABASE_URL
+      - key: NODE_ENV
+        value: production

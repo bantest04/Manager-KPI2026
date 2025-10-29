@@ -27,6 +27,17 @@ const fmtMoneyShort = (v) => {
 const toISO = (d) => new Date(d).toISOString().split("T")[0];
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"]; // xanh, lục, cam, đỏ, tím, teal
 
+// API base – hỗ trợ triển khai tách FE/API: đặt VITE_API_URL trong .env.production
+const API_BASE = (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_URL)
+  ? String(import.meta.env.VITE_API_URL).replace(/\/$/, '')
+  : '';
+const apiFetch = (input, init) => {
+  if (typeof input === 'string' && input.startsWith('/')) {
+    return fetch(`${API_BASE}${input}`, init);
+  }
+  return fetch(input, init);
+};
+
 // Mock options (có thể đổi sau khi nối backend)
 const DEFAULT_OPTIONS = {
   statuses: ["Đã giao hàng", "Đang sản xuất", "24H xử lý", "Chờ thanh toán", "Hủy"],
@@ -278,7 +289,7 @@ function TargetAllocationPanel({ members, monthlyTarget, allocation, setAllocati
 
     try {
       setSaving(true);
-      const res = await fetch('/api/target-allocation', {
+      const res = await apiFetch('/api/target-allocation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ month: selectedMonth, allocation })
@@ -690,7 +701,7 @@ function LeaderPage(){
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/members');
+  const res = await apiFetch('/api/members');
         const data = await res.json();
         setAllMembers(Array.isArray(data) ? data : []);
       } catch (e) {
@@ -726,7 +737,7 @@ function LeaderPage(){
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/team-target/${selectedMonth}`);
+  const res = await apiFetch(`/api/team-target/${selectedMonth}`);
         const data = await res.json();
         setTeamTarget(data.target || 0);
         setTempTeamTarget(data.target || 0);
@@ -740,7 +751,7 @@ function LeaderPage(){
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/target-allocation/${selectedMonth}`);
+  const res = await apiFetch(`/api/target-allocation/${selectedMonth}`);
         const data = await res.json();
         
         // Nếu có data từ DB, dùng nó
@@ -780,7 +791,7 @@ function LeaderPage(){
     const tick = async () => {
       try {
         // Team target
-        const resT = await fetch(`/api/team-target/${selectedMonth}`);
+  const resT = await apiFetch(`/api/team-target/${selectedMonth}`);
         const dataT = await resT.json();
         if (!cancelled) {
           setTeamTarget(dataT.target || 0);
@@ -788,7 +799,7 @@ function LeaderPage(){
         }
 
         // Target allocation
-        const resA = await fetch(`/api/target-allocation/${selectedMonth}`);
+  const resA = await apiFetch(`/api/target-allocation/${selectedMonth}`);
         const dataA = await resA.json();
         if (!cancelled) {
           if (Object.keys(dataA).length > 0) {
@@ -826,7 +837,7 @@ function LeaderPage(){
   const loadReports = async () => {
     try{
       setLoading(true);
-      const res = await fetch('/api/reports');
+  const res = await apiFetch('/api/reports');
       const data = await res.json();
       const list = Array.isArray(data) ? data.map(normalizeReport) : [];
       setReports(list);
@@ -882,7 +893,7 @@ function LeaderPage(){
   // Submit báo cáo (leader cũng có thể nhập)
   const addReport = async (payload) => {
     try{
-      const res = await fetch('/api/reports', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+  const res = await apiFetch('/api/reports', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
       if(!res.ok) throw new Error('create failed');
       const created = normalizeReport(await res.json());
       setReports(prev=>[created, ...prev]);
@@ -894,7 +905,7 @@ function LeaderPage(){
 
   const saveEdit = async (r) => {
     try{
-      const res = await fetch(`/api/reports/${r.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(r) });
+  const res = await apiFetch(`/api/reports/${r.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(r) });
       if(!res.ok) throw new Error('update failed');
       const updated = normalizeReport(await res.json());
       setReports(prev=> prev.map(x=> x.id===updated.id ? updated : x));
@@ -908,7 +919,7 @@ function LeaderPage(){
   const removeReport = async (id) => {
     if(!confirm('Xóa báo cáo này?')) return;
     try{
-      const res = await fetch(`/api/reports/${id}`, { method:'DELETE' });
+  const res = await apiFetch(`/api/reports/${id}`, { method:'DELETE' });
       if(!res.ok) throw new Error('delete failed');
       setReports(prev=> prev.filter(r=> r.id !== id));
     }catch(e){
@@ -959,7 +970,7 @@ function LeaderPage(){
   // Handler để lưu team target
   const handleSaveTeamTarget = async () => {
     try {
-      const res = await fetch('/api/team-target', {
+      const res = await apiFetch('/api/team-target', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ month: selectedMonth, target: tempTeamTarget })
@@ -1304,7 +1315,7 @@ function MemberLoginPage() {
     // Load members từ API (không có PIN)
     (async () => {
       try {
-        const res = await fetch('/api/members');
+  const res = await apiFetch('/api/members');
         const data = await res.json();
         // Chỉ lấy members không phải leader
         const nonLeaders = Array.isArray(data) ? data.filter(m => m.role !== 'leader') : [];
@@ -1332,7 +1343,7 @@ function MemberLoginPage() {
 
     try {
       setLoading(true);
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memberId: Number(selectedMemberId), pin })
@@ -1497,7 +1508,7 @@ function MemberPage(){
     // Load members from API
     (async () => {
       try {
-        const res = await fetch('/api/members');
+  const res = await apiFetch('/api/members');
         const data = await res.json();
         setAllMembers(Array.isArray(data) ? data : []);
       } catch (e) {
@@ -1531,7 +1542,7 @@ function MemberPage(){
     }
 
     try {
-      const res = await fetch(`/api/members/${currentMember.id}/pin`, {
+      const res = await apiFetch(`/api/members/${currentMember.id}/pin`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPin: pinForm.oldPin, newPin: pinForm.newPin })
@@ -1566,7 +1577,7 @@ function MemberPage(){
   const loadReports = async () => {
     try{
       setLoading(true);
-      const res = await fetch('/api/reports');
+  const res = await apiFetch('/api/reports');
       const data = await res.json();
       const normalized = Array.isArray(data) ? data.map(normalizeReport) : [];
       setReports(normalized);
@@ -1641,7 +1652,7 @@ function MemberPage(){
 
   const addReport = async (payload) => {
     try{
-      const res = await fetch('/api/reports', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const res = await apiFetch('/api/reports', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
       if(!res.ok) throw new Error('create failed');
       const created = await res.json();
       const normalized = normalizeReport(created);
@@ -1659,7 +1670,7 @@ function MemberPage(){
       // Gửi toàn bộ dữ liệu report, chỉ thay đổi status
       const updatedReport = { ...selectedReport, status: newStatus };
       
-      const res = await fetch(`/api/reports/${selectedReport.id}`, {
+      const res = await apiFetch(`/api/reports/${selectedReport.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedReport)

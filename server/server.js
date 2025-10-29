@@ -29,6 +29,37 @@ console.log('✅ Connected to Postgres Neon');
 const app = express();
 app.use(express.json());
 
+// CORS (hỗ trợ deploy tách FE/API). Mặc định cho phép tất cả nguồn, có thể giới hạn bằng env CORS_ORIGIN
+app.use((req, res, next) => {
+  const allow = process.env.CORS_ORIGIN || '*';
+  res.setHeader('Access-Control-Allow-Origin', allow);
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+// --- CORS CONFIG ---
+import cors from 'cors';
+
+const allowedOrigins = [
+  'https://managekpi.id.vn',
+  'https://www.managekpi.id.vn',
+  'http://localhost:5173', // để test dev
+];
+
+app.use(cors({
+  origin(origin, callback) {
+    // Cho phép nếu không có origin (cURL, server) hoặc nằm trong danh sách
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    console.warn('❌ CORS blocked:', origin);
+    return callback(new Error('Not allowed by CORS'));
+  },
+}));
+
+
 // helper để query gọn
 const q = async (text, params) => {
   const res = await pool.query(text, params);
