@@ -3,7 +3,8 @@ services:
     name: manager-kpi2026
     env: node
     plan: free
-    buildCommand: npm ci && npm run build
+    # Dùng npm install thay vì npm ci để không bị lỗi thiếu lockfile khi vừa thêm deps mới
+    buildCommand: npm install && npm run build
     startCommand: node server/server.js
     autoDeploy: true
     envVars:

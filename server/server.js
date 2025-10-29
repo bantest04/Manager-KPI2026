@@ -29,11 +29,8 @@ console.log('✅ Connected to Postgres Neon');
 // ============== EXPRESS APP ==============
 const app = express();
 app.use(express.json());
-// CORS (triển khai tách FE/API): tùy biến qua CORS_ORIGIN, mặc định cho phép tất cả
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*', methods: ['GET','POST','PUT','DELETE','OPTIONS'] }));
 
 // --- CORS CONFIG ---
-import cors from 'cors';
 
 const allowedOrigins = [
   'https://managekpi.id.vn',
