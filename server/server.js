@@ -2,6 +2,7 @@
 import 'dotenv/config';
 import pkg from 'pg';
 import express from 'express';
+import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
@@ -28,16 +29,8 @@ console.log('✅ Connected to Postgres Neon');
 // ============== EXPRESS APP ==============
 const app = express();
 app.use(express.json());
-
-// CORS (hỗ trợ deploy tách FE/API). Mặc định cho phép tất cả nguồn, có thể giới hạn bằng env CORS_ORIGIN
-app.use((req, res, next) => {
-  const allow = process.env.CORS_ORIGIN || '*';
-  res.setHeader('Access-Control-Allow-Origin', allow);
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
+// CORS (triển khai tách FE/API): tùy biến qua CORS_ORIGIN, mặc định cho phép tất cả
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*', methods: ['GET','POST','PUT','DELETE','OPTIONS'] }));
 
 // --- CORS CONFIG ---
 import cors from 'cors';

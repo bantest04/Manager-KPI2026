@@ -11,6 +11,7 @@
     "dev:all": "concurrently -k -n api,web -c cyan,magenta \"npm run start\" \"npm run dev\""
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "axios": "^1.7.7",
     "dotenv": "^17.2.3",
     "express": "^4.19.2",
