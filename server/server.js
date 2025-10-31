@@ -242,6 +242,94 @@ app.get('/api/team-target/:month', async (req, res) => {
   }
 });
 
+// ============== API: KPI Config (start/end/total – single row) ==============
+app.get('/api/kpi-config', async (req, res) => {
+  try {
+    const rows = await q(`SELECT 
+      to_char(start_date, 'YYYY-MM-DD') as start_date,
+      to_char(end_date, 'YYYY-MM-DD') as end_date,
+      total_target::bigint as total_target,
+      updated_at,
+      last_saved_by,
+      version
+    FROM kpi_config WHERE id=1`);
+    if (!rows[0]) {
+      // Fallback default (current demo campaign)
+      return res.json({
+        startDate: '2025-10-14',
+        endDate: '2026-01-19',
+        totalTarget: 25000000000,
+        from: 'default'
+      });
+    }
+    const r = rows[0];
+    res.json({
+      startDate: r.start_date,
+      endDate: r.end_date,
+      totalTarget: Number(r.total_target),
+      updatedAt: r.updated_at,
+      lastSavedBy: r.last_saved_by,
+      version: Number(r.version)
+    });
+  } catch (e) {
+    console.error('GET /api/kpi-config error', e);
+    res.status(500).json({ ok: false, message: 'Failed to load KPI config' });
+  }
+});
+
+app.put('/api/kpi-config', async (req, res) => {
+  try {
+    const { startDate, endDate, totalTarget, savedBy, version } = req.body || {};
+    if (!startDate || !endDate || totalTarget == null) {
+      return res.status(400).json({ ok: false, message: 'Missing startDate, endDate or totalTarget' });
+    }
+    // Basic validations
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+      return res.status(400).json({ ok: false, message: 'Invalid date format' });
+    }
+    if (s > e) {
+      return res.status(400).json({ ok: false, message: 'startDate must be before or equal to endDate' });
+    }
+    const tgt = Number(totalTarget);
+    if (!Number.isFinite(tgt) || tgt < 0) {
+      return res.status(400).json({ ok: false, message: 'totalTarget must be a non-negative number' });
+    }
+
+    // Optimistic concurrency: require matching version
+    // If row not exists yet, insert with version=1; else update where version matches
+    const current = await q('SELECT version FROM kpi_config WHERE id=1');
+    if (!current[0]) {
+      const rows = await q(`
+        INSERT INTO kpi_config(id, start_date, end_date, total_target, last_saved_by, updated_at, version)
+        VALUES (1, $1, $2, $3, $4, NOW(), 1)
+        RETURNING to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at, version, last_saved_by
+      `, [startDate, endDate, tgt, savedBy || null]);
+      return res.json({ ok: true, message: 'KPI config saved', updatedAt: rows[0].updated_at, version: Number(rows[0].version), lastSavedBy: rows[0].last_saved_by });
+    }
+    const expected = Number(version);
+    if (!Number.isFinite(expected)) {
+      return res.status(409).json({ ok: false, message: 'Missing or invalid version for concurrency check' });
+    }
+    const upd = await pool.query(`
+      UPDATE kpi_config 
+      SET start_date=$1, end_date=$2, total_target=$3, last_saved_by=$4, updated_at=NOW(), version = version + 1
+      WHERE id=1 AND version=$5
+      RETURNING to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at, version, last_saved_by
+    `, [startDate, endDate, tgt, savedBy || null, expected]);
+    if (upd.rowCount === 0) {
+      const latest = await q(`SELECT to_char(start_date,'YYYY-MM-DD') as start_date, to_char(end_date,'YYYY-MM-DD') as end_date, total_target::bigint as total_target, to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as updated_at, last_saved_by, version FROM kpi_config WHERE id=1`);
+      return res.status(409).json({ ok: false, message: 'Config changed by someone else', current: latest[0] });
+    }
+    const r = upd.rows[0];
+    res.json({ ok: true, message: 'KPI config saved', updatedAt: r.updated_at, version: Number(r.version), lastSavedBy: r.last_saved_by });
+  } catch (e) {
+    console.error('PUT /api/kpi-config error', e);
+    res.status(500).json({ ok: false, message: 'Failed to save KPI config' });
+  }
+});
+
 app.post('/api/team-target', async (req, res) => {
   try {
     const { month, target } = req.body;
@@ -444,6 +532,30 @@ if ((tcount?.[0]?.c ?? 0) === 0) {
   }
 }
 
+// Tạo bảng KPI config (1 row)
+await pool.query(`
+CREATE TABLE IF NOT EXISTS kpi_config (
+  id INT PRIMARY KEY,
+  start_date DATE,
+  end_date DATE,
+  total_target BIGINT,
+  updated_at TIMESTAMP DEFAULT NOW(),
+  last_saved_by TEXT,
+  version INT DEFAULT 1
+);
+`);
+
+// Bổ sung cột nếu thiếu (triển khai nâng cấp)
+await pool.query(`ALTER TABLE kpi_config ADD COLUMN IF NOT EXISTS last_saved_by TEXT`);
+await pool.query(`ALTER TABLE kpi_config ADD COLUMN IF NOT EXISTS version INT DEFAULT 1`);
+
+// Đảm bảo có dòng mặc định nếu trống
+const kcfg = await q('SELECT COUNT(*)::int AS c FROM kpi_config WHERE id=1');
+if ((kcfg?.[0]?.c ?? 0) === 0) {
+  await q(`INSERT INTO kpi_config(id, start_date, end_date, total_target, last_saved_by, version) VALUES(1, $1, $2, $3, $4, 1)`,
+    ['2025-10-14', '2026-01-19', 25000000000, 'system']);
+}
+
 // Seed sample reports if few
 const rcount = await q('SELECT COUNT(*)::int AS c FROM reports');
 if ((rcount?.[0]?.c ?? 0) < 6) {
@@ -467,15 +579,6 @@ if ((rcount?.[0]?.c ?? 0) < 6) {
 }
 
 // ============== KPI Endpoints ==============
-// Members (id as text)
-app.get('/api/members', async (req, res) => {
-  try{
-    const rows = await q('SELECT id::text as id, name, NULL as phone, TRUE as active FROM members ORDER BY id');
-    res.json(rows);
-  }catch(e){
-    console.error(e); res.status(500).json({ ok:false, message:'Failed to load members' });
-  }
-});
 
 // KPI targets by month
 app.get('/api/kpi/targets', async (req,res)=>{

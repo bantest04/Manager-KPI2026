@@ -86,13 +86,15 @@ function AppShell({ children, title }) {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <header className="bg-white/80 backdrop-blur sticky top-0 z-10 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 text-xl font-bold text-gray-800">
-            <Target className="text-blue-600" /> KPI Tết 2026
-          </Link>
+          <div className="flex items-center gap-2 text-xl font-bold text-gray-800 select-none">
+            <Target className="text-blue-600" aria-hidden="true" /> KPI Tết 2026
+          </div>
           <nav className="flex items-center gap-2 text-sm">
             {!isMemberPage && <Link to="/leader" className="px-3 py-1.5 rounded-lg hover:bg-gray-100 flex items-center gap-1"><ShieldCheck size={16}/> Leader</Link>}
             {!isMemberPage && <Link to="/member/login" className="px-3 py-1.5 rounded-lg hover:bg-gray-100 flex items-center gap-1"><Users size={16}/> Member</Link>}
-            <button onClick={()=>nav(-1)} className="px-3 py-1.5 rounded-lg hover:bg-gray-100 flex items-center gap-1"><ChevronRight className="rotate-180" size={16}/> Back</button>
+            {!isMemberPage && (
+              <button onClick={()=>nav(-1)} className="px-3 py-1.5 rounded-lg hover:bg-gray-100 flex items-center gap-1"><ChevronRight className="rotate-180" size={16}/> Back</button>
+            )}
           </nav>
         </div>
       </header>
@@ -128,7 +130,7 @@ function Home(){
             <div className="flex items-center gap-2 mb-2 text-blue-700 font-semibold"><ShieldCheck/> Leader</div>
             <p className="text-sm text-blue-900">Xem & chỉnh cấu hình KPI, tổng quan doanh số, hiệu suất 3 thành viên còn lại, thêm báo cáo.</p>
           </Link>
-          <Link to="/member" className="flex-1 p-4 rounded-xl border hover:shadow transition bg-emerald-50">
+          <Link to="/member/login" className="flex-1 p-4 rounded-xl border hover:shadow transition bg-emerald-50">
             <div className="flex items-center gap-2 mb-2 text-emerald-700 font-semibold"><Users/> Member</div>
             <p className="text-sm text-emerald-900">Gửi báo cáo hằng ngày, xem bảng doanh số của 3 thành viên (ngoại trừ Mỹ Anh).</p>
           </Link>
@@ -416,7 +418,7 @@ function TargetAllocationPanel({ members, monthlyTarget, allocation, setAllocati
 }
 
 function TeamOverview({ members, reports, totalTarget, targetAllocation }){
-  const perMember = totalTarget / members.length;
+  const totalTargetTeam = Object.values(targetAllocation || {}).reduce((s, v) => s + (Number(v) || 0), 0) || totalTarget;
   const byMember = members.map(m => {
     const rs = reports.filter(r => r.memberId === m.id);
     const totalSales = rs.reduce((s,r)=>s + r.sales, 0);
@@ -424,7 +426,8 @@ function TeamOverview({ members, reports, totalTarget, targetAllocation }){
     const totalReplied = rs.reduce((s,r)=>s + r.replied, 0);
     
     // Sử dụng target allocation nếu có, không thì chia đều
-    const memberTarget = targetAllocation?.[m.id] || perMember;
+    const fallbackPerMember = totalTargetTeam / Math.max(members.length, 1);
+    const memberTarget = targetAllocation?.[m.id] || fallbackPerMember;
     const progress = (totalSales / memberTarget) * 100;
     const convRate = totalContacted ? (totalReplied / totalContacted) * 100 : 0;
     return { ...m, totalSales, totalContacted, totalReplied, progress, convRate, remaining: Math.max(memberTarget - totalSales, 0), memberTarget };
@@ -438,9 +441,9 @@ function TeamOverview({ members, reports, totalTarget, targetAllocation }){
   });
   
   const totalSales = byMember.reduce((s,m)=>s+m.totalSales,0);
-  const overall = (totalSales / totalTarget) * 100;
+  const overall = (totalSales / totalTargetTeam) * 100;
 
-  const barData = byMember.map(m=>({ name:m.name, target: perMember, achieved: m.totalSales }));
+  const barData = byMember.map(m=>({ name:m.name, target: m.memberTarget, achieved: m.totalSales }));
 
   return (
     <div className="grid gap-6">
@@ -452,9 +455,9 @@ function TeamOverview({ members, reports, totalTarget, targetAllocation }){
         <div className="w-full bg-gray-200 rounded-full h-3">
           <div className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600" style={{ width: `${Math.min(overall,100)}%` }} />
         </div>
-        <div className="flex justify-between mt-1 text-xs text-gray-600">
+          <div className="flex justify-between mt-1 text-xs text-gray-600">
           <span>Đã đạt: {fmtMoneyShort(totalSales)}</span>
-          <span>Còn lại: {fmtMoneyShort(totalTarget - totalSales)}</span>
+          <span>Còn lại: {fmtMoneyShort(Math.max(0, totalTargetTeam - totalSales))}</span>
         </div>
       </div>
 
@@ -674,6 +677,21 @@ function Field({ label, value, onChange, type="text" }){
   );
 }
 
+// Add: WorkingDaysBadge helper component
+function WorkingDaysBadge({ startDate, endDate, excludeSunday }){
+  let count = 0;
+  const s = new Date(startDate);
+  const e = new Date(endDate);
+  if (!isNaN(s) && !isNaN(e) && s <= e) {
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate()+1)) {
+      if (!excludeSunday || d.getDay() !== 0) count++;
+    }
+  }
+  return (
+    <span className="px-2 py-1 rounded bg-gray-100 text-gray-700">Working days: <b>{count}</b></span>
+  );
+}
+
 // ===== LEADER PAGE =====
 function LeaderPage(){
   const [options] = useState(DEFAULT_OPTIONS);
@@ -685,10 +703,8 @@ function LeaderPage(){
   const [selectedMonth, setSelectedMonth] = useState(() => {
     return new Date().toISOString().slice(0, 7); // YYYY-MM format
   });
-  // Tự động theo dõi tháng hiện tại + làm mới dữ liệu
+  // Tự động theo dõi tháng hiện tại (giữ tùy chọn này); bỏ auto refresh để tránh ghi đè dữ liệu
   const [autoFollowCurrentMonth, setAutoFollowCurrentMonth] = useState(true);
-  const [liveRefresh, setLiveRefresh] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(null);
   const [now, setNow] = useState(new Date());
 
   // Đồng hồ hiển thị thời gian hiện tại (cập nhật mỗi giây)
@@ -717,6 +733,91 @@ function LeaderPage(){
     endDate: toISO("2026-01-19"),
     totalTarget: 25_000_000_000,
   });
+  // Track saved baseline to detect unsaved changes
+  const [savedConfig, setSavedConfig] = useState(null);
+  const [savedConfigVersion, setSavedConfigVersion] = useState(null); // Add
+  const [lastSavedBy, setLastSavedBy] = useState(''); // Add
+  const [savedByInput, setSavedByInput] = useState(''); // Add
+  const [configDirty, setConfigDirty] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configMessage, setConfigMessage] = useState('');
+  const [updatedAt, setUpdatedAt] = useState(''); // Add
+  const [excludeSunday, setExcludeSunday] = useState(() => { // Add
+    try { return JSON.parse(localStorage.getItem('leader_excludeSunday') || 'true'); } catch { return true; }
+  });
+
+  // Load KPI config từ DB (fallback localStorage nếu lỗi)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch('/api/kpi-config');
+        if (res.ok) {
+          const data = await res.json();
+          const next = {
+            startDate: data.startDate || toISO("2025-10-14"),
+            endDate: data.endDate || toISO("2026-01-19"),
+            totalTarget: Number(data.totalTarget ?? 25_000_000_000),
+          };
+          setConfig(next);
+          setSavedConfig(next);
+          setConfigDirty(false);
+          setSavedConfigVersion(Number(data.version || 1));
+          setUpdatedAt(data.updatedAt || '');
+          setLastSavedBy(data.lastSavedBy || '');
+          try {
+            const sb = localStorage.getItem('leader_savedBy') || (leader?.name || 'Leader');
+            setSavedByInput(sb);
+          } catch {}
+          return;
+        }
+      } catch (e) {
+        console.error('Load KPI config error', e);
+      }
+      // Fallback local
+      try {
+        const raw = localStorage.getItem('leader_config');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.startDate && parsed.endDate && typeof parsed.totalTarget === 'number') {
+            setConfig(parsed);
+            setSavedConfig(parsed);
+            setConfigDirty(false);
+            setSavedConfigVersion(1);
+            setUpdatedAt('');
+            setLastSavedBy('');
+            try {
+              const sb = localStorage.getItem('leader_savedBy') || (leader?.name || 'Leader');
+              setSavedByInput(sb);
+            } catch {}
+          }
+        }
+      } catch {}
+    })();
+  }, []);
+
+  // LocalStorage backup (optional) and dirty tracking
+  useEffect(() => {
+    try { localStorage.setItem('leader_config', JSON.stringify(config)); } catch {}
+    if (!savedConfig) return;
+    const dirty = config.startDate !== savedConfig.startDate || config.endDate !== savedConfig.endDate || Number(config.totalTarget) !== Number(savedConfig.totalTarget);
+    setConfigDirty(dirty);
+  }, [config, savedConfig]);
+
+  // Persist excludeSunday setting
+  useEffect(() => {
+    try { localStorage.setItem('leader_excludeSunday', JSON.stringify(excludeSunday)); } catch {}
+  }, [excludeSunday]);
+
+  // Cảnh báo khi rời trang nếu đang có thay đổi chưa lưu
+  useEffect(() => {
+    const handler = (e) => {
+      if (!configDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [configDirty]);
 
   // Team target theo tháng
   const [teamTarget, setTeamTarget] = useState(0);
@@ -754,17 +855,9 @@ function LeaderPage(){
   const res = await apiFetch(`/api/target-allocation/${selectedMonth}`);
         const data = await res.json();
         
-        // Nếu có data từ DB, dùng nó
-        if (Object.keys(data).length > 0) {
+        // Nếu có data từ DB thì cập nhật; nếu không thì GIỮ nguyên cấu hình hiện tại (không auto reset)
+        if (data && Object.keys(data).length > 0) {
           setTargetAllocation(data);
-        } else {
-          // Reset về default nếu chưa có data cho tháng này
-          const defaultPercent = 100 / 4;
-          const defaultAllocation = {};
-          for (let i = 1; i <= 4; i++) {
-            defaultAllocation[i] = { percent: defaultPercent };
-          }
-          setTargetAllocation(defaultAllocation);
         }
       } catch (e) {
         console.error('Failed to load target allocation', e);
@@ -784,49 +877,7 @@ function LeaderPage(){
     return () => clearInterval(id);
   }, [autoFollowCurrentMonth]);
 
-  // Làm mới tự động: nếu bật, poll dữ liệu định kỳ (30s)
-  useEffect(() => {
-    if (!liveRefresh) return;
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        // Team target
-  const resT = await apiFetch(`/api/team-target/${selectedMonth}`);
-        const dataT = await resT.json();
-        if (!cancelled) {
-          setTeamTarget(dataT.target || 0);
-          setTempTeamTarget(dataT.target || 0);
-        }
-
-        // Target allocation
-  const resA = await apiFetch(`/api/target-allocation/${selectedMonth}`);
-        const dataA = await resA.json();
-        if (!cancelled) {
-          if (Object.keys(dataA).length > 0) {
-            setTargetAllocation(dataA);
-          } else {
-            const defaultPercent = 100 / 4;
-            const defaultAllocation = {};
-            for (let i = 1; i <= 4; i++) defaultAllocation[i] = { percent: defaultPercent };
-            setTargetAllocation(defaultAllocation);
-          }
-        }
-
-        // Reports
-        await loadReports();
-
-        if (!cancelled) setLastUpdated(new Date().toISOString());
-      } catch (e) {
-        console.error('Auto refresh error', e);
-      }
-    };
-    tick();
-    const id = setInterval(tick, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [liveRefresh, selectedMonth]);
+  // Bỏ auto refresh: tránh việc làm mới tự động khiến dữ liệu cũ hiện lại
 
   // Báo cáo lấy từ API (load TẤT CẢ, không filter theo tháng)
   const [reports, setReports] = useState([]);
@@ -875,7 +926,7 @@ function LeaderPage(){
     // tính ngày làm việc (T2–T7)
     const workdays = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
-      if (d.getDay() !== 0) workdays.push(new Date(d));
+      if (!excludeSunday || d.getDay() !== 0) workdays.push(new Date(d));
     }
     const totalWorkdays = workdays.length || 1;
     const perMemberTarget = config.totalTarget / teamCount;
@@ -888,7 +939,7 @@ function LeaderPage(){
     const requiredContacted = realMetrics.replyRate > 0 ? requiredReplied / realMetrics.replyRate : 0;
     
     return { totalWorkdays, perMemberTarget, dailyPerMember, weeklyPerMember, dealsPerDay, requiredReplied, requiredContacted };
-  }, [config, allMembers.length, realMetrics]);
+  }, [config, allMembers.length, realMetrics, excludeSunday]);
 
   // Submit báo cáo (leader cũng có thể nhập)
   const addReport = async (payload) => {
@@ -1118,6 +1169,11 @@ function LeaderPage(){
             </tbody>
           </table>
         </div>
+        {filteredReports.length > 50 && (
+          <div className="mt-3 text-center text-sm text-gray-500">
+            Hiển thị 50/{filteredReports.length} báo cáo. Sử dụng bộ lọc để thu hẹp kết quả.
+          </div>
+        )}
       </div>
       {/* Cấu hình KPI */}
       <div className="bg-white rounded-xl shadow p-6">
@@ -1136,10 +1192,17 @@ function LeaderPage(){
             {/* Month Selector */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">📅 Chọn tháng cấu hình</label>
-              <input 
-                type="month" 
+              <input
+                type="month"
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (configDirty) {
+                    const ok = confirm('Bạn có thay đổi cấu hình KPI chưa lưu. Đổi tháng sẽ không tự lưu. Tiếp tục?');
+                    if (!ok) return;
+                  }
+                  setSelectedMonth(next);
+                }}
                 className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
               />
               <p className="text-xs text-gray-600 mt-1">
@@ -1157,19 +1220,6 @@ function LeaderPage(){
                   />
                   <span>Tự theo dõi tháng hiện tại</span>
                 </label>
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={liveRefresh}
-                    onChange={(e) => setLiveRefresh(e.target.checked)}
-                  />
-                  <span>Làm mới dữ liệu tự động (30s)</span>
-                </label>
-                {lastUpdated && (
-                  <div className="text-xs text-gray-500">
-                    Cập nhật gần nhất: {new Date(lastUpdated).toLocaleTimeString('vi-VN')}
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1228,6 +1278,76 @@ function LeaderPage(){
             <Field label="Ngày bắt đầu" value={config.startDate} onChange={(v)=>setConfig(s=>({...s, startDate:v}))} type="date"/>
             <Field label="Ngày kết thúc" value={config.endDate} onChange={(v)=>setConfig(s=>({...s, endDate:v}))} type="date"/>
             <Field label="Target tổng chiến dịch (tham khảo)" value={config.totalTarget} onChange={(v)=>setConfig(s=>({...s, totalTarget:Number(v)||0}))} type="number"/>
+          </div>
+          {/* Working days toggle and badge */}
+          <div className="mt-3 flex items-center gap-4 text-sm">
+            <label className="inline-flex items-center gap-2">
+              <input type="checkbox" checked={excludeSunday} onChange={(e)=>setExcludeSunday(e.target.checked)} />
+              <span>Chỉ tính ngày làm việc (T2–T7, loại Chủ nhật)</span>
+            </label>
+            <WorkingDaysBadge startDate={config.startDate} endDate={config.endDate} excludeSunday={excludeSunday} />
+          </div>
+          {/* Last saved and editor name */}
+          {/* Ẩn UI hiển thị người lưu và thời điểm lưu, vì chỉ Leader được phép chỉnh KPI */}
+          <div className="flex items-center gap-3 mt-3">
+            <button
+              onClick={async () => {
+                // Validate client-side
+                if (!config.startDate || !config.endDate) { alert('Vui lòng nhập đủ ngày bắt đầu/kết thúc'); return; }
+                if (new Date(config.startDate) > new Date(config.endDate)) { alert('Ngày bắt đầu phải trước hoặc bằng ngày kết thúc'); return; }
+                if (config.totalTarget < 0) { alert('Target tổng phải >= 0'); return; }
+                try {
+                  setSavingConfig(true);
+                  setConfigMessage('');
+                  const res = await apiFetch('/api/kpi-config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...config, savedBy: savedByInput || 'Leader', version: savedConfigVersion ?? 1 })
+                  });
+                  if (res.status === 409) {
+                    const data = await res.json();
+                    setConfigMessage('⚠️ Cấu hình đã bị thay đổi bởi người khác. Đang tải lại...');
+                    setTimeout(()=> setConfigMessage(''), 4000);
+                    const r2 = await apiFetch('/api/kpi-config');
+                    if (r2.ok) {
+                      const d2 = await r2.json();
+                      const next = { startDate: d2.startDate, endDate: d2.endDate, totalTarget: Number(d2.totalTarget) };
+                      setConfig(next);
+                      setSavedConfig(next);
+                      setSavedConfigVersion(Number(d2.version || 1));
+                      setUpdatedAt(d2.updatedAt || '');
+                      setLastSavedBy(d2.lastSavedBy || (savedByInput || 'Leader'));
+                      setConfigDirty(false);
+                    }
+                    return;
+                  }
+                  const data = await res.json();
+                  if (!res.ok || data.ok === false) throw new Error(data.message || 'Save failed');
+                  setSavedConfig(config);
+                  setSavedConfigVersion(Number(data.version || (savedConfigVersion ?? 1) + 1));
+                  setUpdatedAt(data.updatedAt || '');
+                  setLastSavedBy(data.lastSavedBy || (savedByInput || 'Leader'));
+                  try { localStorage.setItem('leader_savedBy', savedByInput || 'Leader'); } catch {}
+                  setConfigDirty(false);
+                  setConfigMessage('✅ Đã lưu cấu hình KPI vào DB');
+                  setTimeout(()=> setConfigMessage(''), 3000);
+                } catch (e) {
+                  console.error('Save KPI config error', e);
+                  setConfigMessage('❌ Lưu cấu hình thất bại');
+                  setTimeout(()=> setConfigMessage(''), 3000);
+                } finally {
+                  setSavingConfig(false);
+                }
+              }}
+              disabled={!configDirty || savingConfig}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:bg-gray-400"
+            >
+              {savingConfig ? 'Đang lưu...' : '💾 Lưu cấu hình'}
+            </button>
+            {configDirty && <span className="text-sm text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded">Chưa lưu</span>}
+            {configMessage && (
+              <span className={`text-sm ${configMessage.includes('✅') ? 'text-green-700' : configMessage.includes('⚠️') ? 'text-amber-700' : 'text-red-700'}`}>{configMessage}</span>
+            )}
           </div>
           <p className="text-xs text-gray-600 mt-2">
             💡 Target tổng này chỉ để tham khảo tính KPI. Target thực tế được thiết lập theo từng tháng ở phía trên.
@@ -1635,12 +1755,15 @@ function MemberPage(){
     const teamCount = allMembers.length;
     const start = new Date(config.startDate);
     const end = new Date(config.endDate);
+    // tính ngày làm việc (T2–T7)
     const workdays = [];
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) if (d.getDay() !== 0) workdays.push(new Date(d));
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+      if (d.getDay() !== 0) workdays.push(new Date(d));
+    }
     const totalWorkdays = workdays.length || 1;
     const perMemberTarget = config.totalTarget / teamCount;
     const dailyPerMember = perMemberTarget / totalWorkdays;
-    const weeklyPerMember = dailyPerMember * 6;
+    const weeklyPerMember = dailyPerMember * 6; // T2–T7
     
     // Sử dụng realMetrics
     const dealsPerDay = realMetrics.aov > 0 ? dailyPerMember / realMetrics.aov : 0;

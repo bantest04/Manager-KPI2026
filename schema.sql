@@ -100,6 +100,19 @@ CREATE TABLE IF NOT EXISTS team_target (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- =====================
+-- KPI Config (single row)
+-- =====================
+CREATE TABLE IF NOT EXISTS kpi_config (
+  id INT PRIMARY KEY,
+  start_date DATE,
+  end_date DATE,
+  total_target BIGINT,
+  updated_at TIMESTAMP DEFAULT NOW(),
+  last_saved_by TEXT,
+  version INT DEFAULT 1
+);
+
 -- Helpful indexes (optional)
 -- CREATE INDEX IF NOT EXISTS idx_reports_date ON reports(date);
 -- CREATE INDEX IF NOT EXISTS idx_reports_member ON reports(memberId);
