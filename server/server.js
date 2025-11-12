@@ -30,6 +30,10 @@ console.log('✅ Connected to Postgres Neon');
 const app = express();
 app.use(express.json());
 
+// Toggle demo seeding via env (default: off)
+const SEED_DEMO = process.env.SEED_DEMO === 'true' || process.env.SEED_DEMO === '1';
+console.log('SEED_DEMO:', SEED_DEMO ? 'ON' : 'OFF');
+
 // --- CORS CONFIG ---
 
 const allowedOrigins = [
@@ -516,19 +520,21 @@ if ((mcount?.[0]?.c ?? 0) === 0) {
   console.log('✅ PIN setup complete');
 }
 
-// Seed month targets if empty
-const tcount = await q('SELECT COUNT(*)::int AS c FROM kpi_targets_by_month');
-if ((tcount?.[0]?.c ?? 0) === 0) {
-  console.log('🌱 Seeding kpi_targets_by_month...');
-  const targets = [
-    { month: '2025-10', start: '2025-10-14', end: '2025-10-31', days: 16, target: 1000666667 },
-    { month: '2025-11', start: '2025-11-01', end: '2025-11-30', days: 26, target: 4000000000 },
-    { month: '2025-12', start: '2025-12-01', end: '2025-12-31', days: 27, target: 8000000000 },
-    { month: '2026-01', start: '2026-01-01', end: '2026-01-19', days: 16, target: 12000000000 },
-  ];
-  for (const t of targets) {
-    await q(`INSERT INTO kpi_targets_by_month(id, month, start_date, end_date, working_days, target) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [randomUUID(), t.month, t.start, t.end, t.days, t.target]);
+// Seed month targets if empty (demo only)
+if (SEED_DEMO) {
+  const tcount = await q('SELECT COUNT(*)::int AS c FROM kpi_targets_by_month');
+  if ((tcount?.[0]?.c ?? 0) === 0) {
+    console.log('🌱 Seeding kpi_targets_by_month (DEMO)...');
+    const targets = [
+      { month: '2025-10', start: '2025-10-14', end: '2025-10-31', days: 16, target: 1000666667 },
+      { month: '2025-11', start: '2025-11-01', end: '2025-11-30', days: 26, target: 4000000000 },
+      { month: '2025-12', start: '2025-12-01', end: '2025-12-31', days: 27, target: 8000000000 },
+      { month: '2026-01', start: '2026-01-01', end: '2026-01-19', days: 16, target: 12000000000 },
+    ];
+    for (const t of targets) {
+      await q(`INSERT INTO kpi_targets_by_month(id, month, start_date, end_date, working_days, target) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [randomUUID(), t.month, t.start, t.end, t.days, t.target]);
+    }
   }
 }
 
@@ -556,25 +562,27 @@ if ((kcfg?.[0]?.c ?? 0) === 0) {
     ['2025-10-14', '2026-01-19', 25000000000, 'system']);
 }
 
-// Seed sample reports if few
-const rcount = await q('SELECT COUNT(*)::int AS c FROM reports');
-if ((rcount?.[0]?.c ?? 0) < 6) {
-  console.log('🌱 Seeding sample reports...');
-  // Map first 3 members
-  const ms = await q('SELECT id FROM members ORDER BY id ASC LIMIT 3');
-  const today = new Date('2025-10-16');
-  const mk = (offset)=> new Date(today.getTime() + offset*24*3600*1000).toISOString().slice(0,10);
-  const samples = [
-    { memberId: ms[0]?.id, date: mk(-2), contacted: 10, replied: 3, closed: 1, sales: 30000000, product:'Long Mã', warehouse:'SG', platform:'Facebook' },
-    { memberId: ms[1]?.id, date: mk(-2), contacted: 12, replied: 4, closed: 1, sales: 35000000, product:'Mã Thượng Vân', warehouse:'HN', platform:'Cá nhân' },
-    { memberId: ms[2]?.id, date: mk(-2), contacted: 8,  replied: 2, closed: 1, sales: 20000000, product:'Vó Ngựa Nước Nam', warehouse:'SG', platform:'BNI' },
-    { memberId: ms[0]?.id, date: mk(-1), contacted: 15, replied: 5, closed: 2, sales: 50000000, product:'Long Mã', warehouse:'SG', platform:'Facebook' },
-    { memberId: ms[1]?.id, date: mk(-1), contacted: 9,  replied: 3, closed: 1, sales: 25000000, product:'Mã Đáo Thành Công', warehouse:'HN', platform:'Shopee' },
-    { memberId: ms[2]?.id, date: mk(0),  contacted: 11, replied: 3, closed: 1, sales: 27000000, product:'Mã Thượng Vân', warehouse:'Xưởng', platform:'Website' },
-  ];
-  for (const s of samples) {
-    await q(`INSERT INTO reports(date, memberId, contacted, replied, closed, sales, product, warehouse, platform) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [s.date, s.memberId, s.contacted, s.replied, s.closed, s.sales, s.product, s.warehouse, s.platform]);
+// Seed sample reports if few (demo only)
+if (SEED_DEMO) {
+  const rcount = await q('SELECT COUNT(*)::int AS c FROM reports');
+  if ((rcount?.[0]?.c ?? 0) < 6) {
+    console.log('🌱 Seeding sample reports (DEMO)...');
+    // Map first 3 members
+    const ms = await q('SELECT id FROM members ORDER BY id ASC LIMIT 3');
+    const today = new Date('2025-10-16');
+    const mk = (offset)=> new Date(today.getTime() + offset*24*3600*1000).toISOString().slice(0,10);
+    const samples = [
+      { memberId: ms[0]?.id, date: mk(-2), contacted: 10, replied: 3, closed: 1, sales: 30000000, product:'Long Mã', warehouse:'SG', platform:'Facebook' },
+      { memberId: ms[1]?.id, date: mk(-2), contacted: 12, replied: 4, closed: 1, sales: 35000000, product:'Mã Thượng Vân', warehouse:'HN', platform:'Cá nhân' },
+      { memberId: ms[2]?.id, date: mk(-2), contacted: 8,  replied: 2, closed: 1, sales: 20000000, product:'Vó Ngựa Nước Nam', warehouse:'SG', platform:'BNI' },
+      { memberId: ms[0]?.id, date: mk(-1), contacted: 15, replied: 5, closed: 2, sales: 50000000, product:'Long Mã', warehouse:'SG', platform:'Facebook' },
+      { memberId: ms[1]?.id, date: mk(-1), contacted: 9,  replied: 3, closed: 1, sales: 25000000, product:'Mã Đáo Thành Công', warehouse:'HN', platform:'Shopee' },
+      { memberId: ms[2]?.id, date: mk(0),  contacted: 11, replied: 3, closed: 1, sales: 27000000, product:'Mã Thượng Vân', warehouse:'Xưởng', platform:'Website' },
+    ];
+    for (const s of samples) {
+      await q(`INSERT INTO reports(date, memberId, contacted, replied, closed, sales, product, warehouse, platform) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [s.date, s.memberId, s.contacted, s.replied, s.closed, s.sales, s.product, s.warehouse, s.platform]);
+    }
   }
 }
 
